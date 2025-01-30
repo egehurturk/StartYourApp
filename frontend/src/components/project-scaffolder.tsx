@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Folder, File, ChevronRight, ChevronDown, Github, Download, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -8,6 +8,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import Graph from '@/components/graph';
 import Editor from "@monaco-editor/react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface FileItem {
   type: 'file';
@@ -23,57 +31,113 @@ interface ProjectStructure {
   [key: string]: FileItem | FolderItem;
 }
 
-interface CodeEditorProps {
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+interface UnsavedChanges {
+  [key: string]: boolean;
 }
 
-interface Node {
-  id: string;
-  x: number;
-  y: number;
-  color: string;
-  label: string;
-  fillColor: string;
+export interface LanguageInfo {
+  name: string;
+  extension: string[];
+  monacoLanguage: string;
 }
 
-// Simple code editor component
-const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange }) => (
-  <div className="w-full h-full bg-gray-900 rounded-lg overflow-hidden">
-    <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-      <div className="flex space-x-2">
-        <div className="w-3 h-3 rounded-full bg-red-500"></div>
-        <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-        <div className="w-3 h-3 rounded-full bg-green-500"></div>
-      </div>
-    </div>
-    <Textarea
-      value={value}
-      onChange={onChange}
-      className="w-full h-[calc(100%-2.5rem)] bg-gray-900 text-gray-100 font-mono p-4 border-0 resize-none focus:ring-0"
-      style={{
-        minHeight: '300px',
-        caretColor: 'white'
-      }}
-    />
-  </div>
-);
+export const languageMap: LanguageInfo[] = [
+  {
+    name: 'JavaScript',
+    extension: ['js', 'jsx', 'mjs'],
+    monacoLanguage: 'javascript'  // Monaco identifier
+  },
+  {
+    name: 'TypeScript',
+    extension: ['ts', 'tsx'],
+    monacoLanguage: 'typescript'
+  },
+  {
+    name: 'Python',
+    extension: ['py', 'pyw', 'pyc'],
+    monacoLanguage: 'python'
+  },
+  {
+    name: 'HTML',
+    extension: ['html', 'htm'],
+    monacoLanguage: 'html'
+  },
+  {
+    name: 'CSS',
+    extension: ['css', 'scss', 'sass', 'less'],
+    monacoLanguage: 'css'
+  },
+  {
+    name: 'JSON',
+    extension: ['json'],
+    monacoLanguage: 'json'
+  },
+  {
+    name: 'Markdown',
+    extension: ['md', 'markdown'],
+    monacoLanguage: 'markdown'
+  },
+  {
+    name: 'Docker',
+    extension: ['dockerfile'],
+    monacoLanguage: 'dockerfile'
+  },
+  {
+    name: 'YAML',
+    extension: ['yml', 'yaml'],
+    monacoLanguage: 'yaml'
+  },
+  {
+    name: 'XML',
+    extension: ['xml'],
+    monacoLanguage: 'xml'
+  },
+  {
+    name: 'SQL',
+    extension: ['sql'],
+    monacoLanguage: 'sql'
+  },
+  {
+    name: 'Plain Text',
+    extension: ['txt'],
+    monacoLanguage: 'plaintext'
+  }
+];
+
+export const getMonacoLanguage = (filename: string): string => {
+  const langInfo = getFileLanguage(filename);
+  return langInfo.monacoLanguage;
+};
+
+export const getFileLanguage = (filename: string): LanguageInfo => {
+  // Handle special cases first
+  if (filename.toLowerCase() === 'dockerfile') {
+    return languageMap.find(lang => lang.name === 'Docker') || languageMap[11]; // fallback to Plain Text
+  }
+
+  const extension = filename.split('.').pop()?.toLowerCase() || '';
+
+  // If no extension, return Plain Text
+  if (!extension) return languageMap[11];
+
+  // Find the language that matches the extension
+  const language = languageMap.find(lang =>
+    lang.extension.includes(extension)
+  );
+
+  // Return the found language or Plain Text as fallback
+  return language || languageMap[11];
+};
 
 const ProjectScaffolder: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('diagram');
   const [activeFile, setActiveFile] = useState<string>('README.md');
   const [fileContent, setFileContent] = useState<string>('# My Project. This is a sample README file.');
   const [expandedFolders, setExpandedFolders] = useState<string[]>(['src']);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pendingClose, setPendingClose] = useState(false);
 
-  // State for draggable nodes
-  const [nodes, setNodes] = useState<Node[]>([
-    { id: 'frontend', x: 200, y: 150, color: '#3B82F6', label: 'Frontend', fillColor: '#60A5FA' },
-    { id: 'backend', x: 400, y: 300, color: '#059669', label: 'Backend', fillColor: '#34D399' },
-    { id: 'database', x: 600, y: 450, color: '#7C3AED', label: 'Database', fillColor: '#A78BFA' }
-  ]);
-
-  // State for tracking dragging
-  const [draggedNode, setDraggedNode] = useState<string | null>(null);
+  const [unsavedChanges, setUnsavedChanges] = useState<UnsavedChanges>({});
 
   const projectStructure: ProjectStructure = {
     'README.md': { type: 'file', content: '# My Project' },
@@ -86,13 +150,19 @@ const ProjectScaffolder: React.FC = () => {
     }
   };
 
-
   const toggleFolder = (path: string): void => {
     setExpandedFolders(prev =>
       prev.includes(path)
         ? prev.filter(p => p !== path)
         : [...prev, path]
     );
+  };
+
+  // File click handler in your renderTree function
+  const handleFileClick = (filename: string, content: string) => {
+    setActiveFile(filename);
+    setFileContent(content);
+    setActiveTab('editor');
   };
 
   const renderTree = (structure: ProjectStructure, path: string = ''): React.ReactNode => {
@@ -125,11 +195,7 @@ const ProjectScaffolder: React.FC = () => {
             className={`flex items-center gap-2 px-2 py-1 hover:bg-gray-100 cursor-pointer ${
               activeFile === fullPath ? 'bg-blue-100' : ''
             }`}
-            onClick={() => {
-              setActiveFile(fullPath);
-              setFileContent(item.content);
-              setActiveTab('editor');
-            }}
+            onClick={() => handleFileClick(fullPath, item.content)}
           >
             <File size={16} className="text-gray-500" />
             <span>{name}</span>
@@ -137,11 +203,6 @@ const ProjectScaffolder: React.FC = () => {
         );
       }
     });
-  };
-
-  const handleSave = async (): Promise<void> => {
-    // Implement save functionality
-    console.log('Saving file:', activeFile);
   };
 
   const handleGithubExport = async (): Promise<void> => {
@@ -154,9 +215,194 @@ const ProjectScaffolder: React.FC = () => {
     console.log('Downloading as ZIP');
   };
 
-  const handleEditorChange = (value: any, event: any) => {
-    setFileContent(value)
+  const handleEditorChange = (value: string | undefined, event: any) => {
+    setFileContent(value || '');
+    setUnsavedChanges(prev => ({
+      ...prev,
+      [activeFile]: true
+    }));
+  }
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveFile();
+      }
+
+      // Handle CMD/CTRL + W
+      if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+        e.preventDefault(); // Prevent browser tab from closing
+
+        // Only handle if we're in editor tab
+        if (activeTab === 'editor') {
+          // Create a synthetic mouse event to pass to handleCloseAttempt
+          const syntheticEvent = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+          }) as unknown as React.MouseEvent;
+
+          handleCloseAttempt(syntheticEvent);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [fileContent, activeFile]);
+
+  const handleCloseAttempt = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (unsavedChanges[activeFile]) {
+        setPendingClose(true);
+        setIsModalOpen(true);
+      } else {
+        setActiveTab('diagram');
+      }
+    };
+
+  // Handle save
+  const handleSaveFile = async () => {
+    console.log('Saving file:', activeFile, fileContent);
+    setUnsavedChanges(prev => ({
+      ...prev,
+      [activeFile]: false
+    }));
+  };
+
+  const UnsavedChangesModal = () => (
+    <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Unsaved Changes</DialogTitle>
+          <DialogDescription>
+            This file has unsaved changes. Do you want to close it anyway?
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="flex gap-2 mt-4">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setIsModalOpen(false);
+              setPendingClose(false);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => {
+              setUnsavedChanges(prev => ({
+                ...prev,
+                [activeFile]: false
+              }));
+              setActiveTab('diagram');
+              setIsModalOpen(false);
+              setPendingClose(false);
+            }}
+          >
+            Close without saving
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const EditorTab = () => {
+    const hasUnsavedChanges = unsavedChanges[activeFile];
+
+    return (
+        <div className="flex items-center">
+          <div className={`
+            flex items-center gap-2 
+            px-3 py-1.5 
+            bg-white
+            text-gray-700
+            border border-gray-200
+            border-b-0
+            rounded-t-md
+            shadow-sm
+            relative
+            ml-4
+            group
+            hover:bg-gray-50
+          `}>
+            <File size={14} className="text-gray-500"/>
+            <span className="text-sm font-medium flex items-center gap-1">
+          {activeFile.split('/').pop()}
+              <div className="relative ml-2 w-2 h-2">
+              {/* Unsaved changes indicator */}
+                {hasUnsavedChanges && (
+                    <span className="
+                      absolute
+                      top-1/2
+                      left-1/2
+                      -translate-x-1/2
+                      -translate-y-1/2
+                      w-2
+                      h-2
+                      rounded-full
+                      bg-gray-400
+                      group-hover:opacity-0
+                      transition-opacity
+                    "/>
+                )}
+                {/* Close button - hidden by default, visible on hover when there are unsaved changes */}
+            {hasUnsavedChanges && (
+              <button
+                className="
+                  absolute
+                  top-1/2
+                  left-1/2
+                  -translate-x-1/2
+                  -translate-y-1/2
+                  text-gray-400
+                  hover:text-gray-700
+                  hover:bg-gray-200
+                  rounded-sm
+                  w-4
+                  h-4
+                  flex
+                  items-center
+                  justify-center
+                  opacity-0
+                  group-hover:opacity-100
+                  transition-opacity
+                  text-xs
+                  font-medium
+                "
+                onClick={handleCloseAttempt}
+              >
+                ×
+              </button>
+            )}
+              </div>
+        </span>
+
+            {/* Close button - only shown on hover when there are NO unsaved changes */}
+            {!hasUnsavedChanges && (
+                <button
+                    className="
+                ml-2
+                text-gray-400
+                hover:text-gray-700
+                hover:bg-gray-200
+                rounded-sm
+                p-0.5
+                opacity-0
+                group-hover:opacity-100
+                transition-opacity
+              "
+              onClick={handleCloseAttempt}
+            >
+              ×
+            </button>
+          )}
+            <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] bg-blue-500"></div>
+          </div>
+        </div>
+    );
   }
 
   return (
@@ -181,10 +427,6 @@ const ProjectScaffolder: React.FC = () => {
                   <TabsTrigger value="editor">Code Editor</TabsTrigger>
                 </TabsList>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={handleSave}>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save
-                  </Button>
                   <Button variant="outline" size="sm" onClick={handleGithubExport}>
                     <Github className="w-4 h-4 mr-2" />
                     Export to GitHub
@@ -205,9 +447,10 @@ const ProjectScaffolder: React.FC = () => {
 
             <TabsContent value="editor" className="flex-1">
               <div className="h-full p-4">
-                 <Editor
+                {activeTab === 'editor' && <EditorTab/>}
+                <Editor
                     height="600px"
-                    language="typescript"
+                    language={getMonacoLanguage(activeFile)}
                     theme="one-dark"
                     value={fileContent}
                     options={{
@@ -215,19 +458,16 @@ const ProjectScaffolder: React.FC = () => {
                       fontSize: "16px",
                       formatOnType: true,
                       autoClosingBrackets: true,
-                      minimap: { scale: 0.5 }
+                      minimap: {scale: 0.5}
                     }}
                     onChange={handleEditorChange}
-                 />
-                {/*<CodeEditor*/}
-                {/*  value={fileContent}*/}
-                {/*  onChange={(e) => setFileContent(e.target.value)}*/}
-                {/*/>*/}
+                />
               </div>
             </TabsContent>
           </Tabs>
         </div>
       </div>
+      <UnsavedChangesModal />
     </div>
   );
 };
