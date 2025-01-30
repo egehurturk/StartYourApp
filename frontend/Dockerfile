@@ -2,14 +2,23 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package.json package-lock.json ./
 
-# Install dependencies with legacy peer deps to avoid conflicts
-RUN npm install --legacy-peer-deps
+# TODO: npm run dev locally works but not in docker
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci
 
 # Copy the rest of the application
 COPY . .
 
-# Start the app
-CMD ["npm", "start"]
+# Build the Next.js application
+RUN npm run build
+
+# Expose port 3000
+EXPOSE 3000
+
+# Start the application
+CMD ["npm", "run", "dev"]
