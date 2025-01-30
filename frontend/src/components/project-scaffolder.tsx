@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import Graph from '@/components/graph';
+import Editor from "@monaco-editor/react";
 
 interface FileItem {
   type: 'file';
@@ -61,7 +62,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange }) => (
 const ProjectScaffolder: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('diagram');
   const [activeFile, setActiveFile] = useState<string>('README.md');
-  const [fileContent, setFileContent] = useState<string>('# My Project\n\nThis is a sample README file.');
+  const [fileContent, setFileContent] = useState<string>('# My Project. This is a sample README file.');
   const [expandedFolders, setExpandedFolders] = useState<string[]>(['src']);
 
   // State for draggable nodes
@@ -153,6 +154,11 @@ const ProjectScaffolder: React.FC = () => {
     console.log('Downloading as ZIP');
   };
 
+  const handleEditorChange = (value: any, event: any) => {
+    setFileContent(value)
+
+  }
+
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Main Content Area */}
@@ -199,10 +205,24 @@ const ProjectScaffolder: React.FC = () => {
 
             <TabsContent value="editor" className="flex-1">
               <div className="h-full p-4">
-                <CodeEditor
-                  value={fileContent}
-                  onChange={(e) => setFileContent(e.target.value)}
-                />
+                 <Editor
+                    height="600px"
+                    language="typescript"
+                    theme="one-dark"
+                    value={fileContent}
+                    options={{
+                      inlineSuggest: true,
+                      fontSize: "16px",
+                      formatOnType: true,
+                      autoClosingBrackets: true,
+                      minimap: { scale: 0.5 }
+                    }}
+                    onChange={handleEditorChange}
+                 />
+                {/*<CodeEditor*/}
+                {/*  value={fileContent}*/}
+                {/*  onChange={(e) => setFileContent(e.target.value)}*/}
+                {/*/>*/}
               </div>
             </TabsContent>
           </Tabs>
