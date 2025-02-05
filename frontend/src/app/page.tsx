@@ -1,4 +1,4 @@
-import ProjectScaffolder from "@/components/project-scaffolder";
+import ProjectScaffolder from "@/components/ProjectScaffolder";
 
 export default function Home() {
   return <ProjectScaffolder />;

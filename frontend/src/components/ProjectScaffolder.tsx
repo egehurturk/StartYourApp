@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Folder, File, ChevronRight, ChevronDown, Github, Download, Save } from 'lucide-react';
+import { Folder, File, ChevronRight, ChevronDown, Github, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import Graph from '@/components/graph';
@@ -145,7 +144,13 @@ const ProjectScaffolder: React.FC = () => {
       type: 'folder',
       children: {
         'manage.py': { type: 'file', content: 'print("Hello")' },
-        'requirements.txt': { type: 'file', content: 'django==4.2\npsycopg2-binary==2.9.6' }
+        'requirements.txt': { type: 'file', content: 'django==4.2\npsycopg2-binary==2.9.6' },
+        'app': {
+          type: 'folder',
+          children: {
+            'project.tsx': {type: 'file', content: "const [isModalOpen, setIsModalOpen] = useState(false);\nconst [unsavedChanges, setUnsavedChanges] = useState<UnsavedChanges>({});"}
+          }
+        }
       }
     }
   };
